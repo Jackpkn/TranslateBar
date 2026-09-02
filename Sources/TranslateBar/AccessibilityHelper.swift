@@ -101,6 +101,85 @@ final class AccessibilityHelper {
         }
     }
 
+    struct VisibleChatElement {
+        let text: String
+        let cocoaFrame: CGRect
+    }
+
+    /// Recursively traverses the Accessibility tree of the frontmost app to find text messages and their exact pixel frames
+    func extractVisibleChatElements() -> [VisibleChatElement] {
+        guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
+              let screen = NSScreen.main else { return [] }
+        let screenHeight = screen.frame.height
+        let appElement = AXUIElementCreateApplication(frontmostApp.processIdentifier)
+
+        var focusedWindow: CFTypeRef?
+        let winResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
+        guard winResult == .success, let window = focusedWindow else { return [] }
+
+        var results: [VisibleChatElement] = []
+        var visitedCount = 0
+
+        func traverse(element: AXUIElement) {
+            visitedCount += 1
+            if visitedCount > 300 { return }
+
+            var roleRef: CFTypeRef?
+            AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
+            let role = roleRef as? String ?? ""
+
+            // Extract string from value, title, or description
+            var extractedString: String?
+            var valueRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valueRef) == .success,
+               let valStr = valueRef as? String {
+                extractedString = valStr
+            } else if AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &valueRef) == .success,
+                      let titleStr = valueRef as? String {
+                extractedString = titleStr
+            } else if AXUIElementCopyAttributeValue(element, kAXDescriptionAttribute as CFString, &valueRef) == .success,
+                      let descStr = valueRef as? String {
+                extractedString = descStr
+            }
+
+            if let text = extractedString?.trimmingCharacters(in: .whitespacesAndNewlines),
+               text.count > 1,
+               !isImagePathOrURL(text),
+               role != "AXButton",
+               role != "AXMenuBar",
+               role != "AXMenu",
+               role != "AXMenuItem" {
+
+                var posRef: CFTypeRef?
+                var sizeRef: CFTypeRef?
+                if AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &posRef) == .success,
+                   AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeRef) == .success,
+                   let posVal = posRef, let sizeVal = sizeRef {
+                    var point = CGPoint.zero
+                    var size = CGSize.zero
+                    if AXValueGetValue(posVal as! AXValue, .cgPoint, &point),
+                       AXValueGetValue(sizeVal as! AXValue, .cgSize, &size),
+                       size.width > 20, size.height > 10 {
+                        let cocoaY = screenHeight - point.y - size.height
+                        let frame = CGRect(x: point.x, y: cocoaY, width: size.width, height: size.height)
+                        results.append(VisibleChatElement(text: text, cocoaFrame: frame))
+                    }
+                }
+            }
+
+            var childrenRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+               let children = childrenRef as? [AXUIElement] {
+                for child in children {
+                    traverse(element: child)
+                }
+            }
+        }
+
+        traverse(element: window as! AXUIElement)
+        return results
+    }
+
     /// Gets current cursor screen location for HUD placement
     func getCursorScreenPosition() -> CGPoint {
         let mouseLocation = NSEvent.mouseLocation
