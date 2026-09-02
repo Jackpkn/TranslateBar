@@ -26,6 +26,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         set { UserDefaults.standard.set(newValue, forKey: "targetLanguage") }
     }
 
+    private var autoTranslateTelegram: Bool {
+        get { UserDefaults.standard.object(forKey: "autoTranslateTelegram") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "autoTranslateTelegram") }
+    }
+
+    private var lastTelegramScanTime: Date = .distantPast
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         keyTap = KeyEventTap(
             targetLanguageProvider: { [weak self] in self?.targetLanguage ?? "ES" },
@@ -40,6 +47,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         QuickPaletteWindowController.shared.targetLanguageProvider = { [weak self] in
             self?.targetLanguage ?? "ES"
         }
+
+        // Pre-initialize Live Sidebar on main thread
+        _ = ChatLiveSidebarWindowController.shared
 
         // Setup Global Hotkeys: Option + T (Selection) & Option + Shift + T (Chat Scan)
         GlobalHotkeyManager.shared.startMonitoring(
@@ -56,8 +66,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.targetLanguage ?? "ES"
         }
 
+        // Observe Telegram activation for automatic inline chat translation
+        setupTelegramAutoObserver()
+
         // Fetch DeepL Usage Statistics initially
         refreshUsageStats()
+    }
+
+    private func setupTelegramAutoObserver() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self, self.enabled, self.autoTranslateTelegram else { return }
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let bundleId = app.bundleIdentifier else { return }
+
+            let telegramBundleIds = ["ru.keepcoder.Telegram", "org.telegram.desktop"]
+            if telegramBundleIds.contains(bundleId) {
+                // Debounce to prevent multiple scans within 3 seconds
+                let now = Date()
+                guard now.timeIntervalSince(self.lastTelegramScanTime) > 3.0 else { return }
+                self.lastTelegramScanTime = now
+
+                // Small delay to allow the Telegram window and messages to render
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    ChatSubtitleOverlayManager.shared.scanAndOverlayChatSubtitles(showHUD: false) {
+                        self.targetLanguage
+                    }
+                }
+            }
+        }
     }
 
     private func requestAccessibilityPermission() {
@@ -121,6 +161,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let chatHotkeyItem = NSMenuItem(title: "Hotkey: Option+Shift+T (Auto Chat Subtitles)", action: nil, keyEquivalent: "")
         chatHotkeyItem.isEnabled = false
         menu.addItem(chatHotkeyItem)
+
+        // Telegram Live Translation Sidebar
+        let sidebarItem = NSMenuItem(title: "Telegram Live Translation Sidebar...", action: #selector(toggleSidebar(_:)), keyEquivalent: "s")
+        sidebarItem.keyEquivalentModifierMask = [.option]
+        sidebarItem.target = self
+        menu.addItem(sidebarItem)
+
+        // Telegram Auto-Translate Toggle
+        let telegramItem = NSMenuItem(title: "Auto-Translate Telegram on Focus", action: #selector(toggleAutoTranslateTelegram(_:)), keyEquivalent: "")
+        telegramItem.target = self
+        telegramItem.state = autoTranslateTelegram ? .on : .off
+        menu.addItem(telegramItem)
 
         // Voice Audio Speech Toggle (Disabled by default)
         let voiceItem = NSMenuItem(title: "Voice Audio Pronunciation", action: #selector(toggleVoiceAudio(_:)), keyEquivalent: "")
@@ -228,6 +280,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openQuickPalette(_ sender: NSMenuItem) {
         QuickPaletteWindowController.shared.showPalette()
+    }
+
+    @objc private func toggleSidebar(_ sender: NSMenuItem) {
+        ChatLiveSidebarWindowController.shared.toggleVisibility()
+    }
+
+    @objc private func toggleAutoTranslateTelegram(_ sender: NSMenuItem) {
+        autoTranslateTelegram.toggle()
+        sender.state = autoTranslateTelegram ? .on : .off
     }
 
     @objc private func toggleClipboardAutoTranslate(_ sender: NSMenuItem) {
