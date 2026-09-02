@@ -31,13 +31,35 @@ final class DeepLService {
 
     private init() {}
 
-    /// Gets the current active API key (from Keychain first, then environment variable fallback)
+    /// Gets the current active API key (Keychain -> Process environment -> .env file)
     var apiKey: String? {
         if let storedKey = KeychainHelper.getAPIKey(), !storedKey.isEmpty {
             return storedKey
         }
         if let envKey = ProcessInfo.processInfo.environment["DEEPL_API_KEY"], !envKey.isEmpty {
-            return envKey
+            let cleanKey = envKey.trimmingCharacters(in: CharacterSet(charactersIn: "\"' \t\n\r"))
+            _ = KeychainHelper.saveAPIKey(cleanKey)
+            return cleanKey
+        }
+        // Try reading .env file from current directory
+        let envPaths = [
+            FileManager.default.currentDirectoryPath + "/.env",
+            Bundle.main.bundlePath + "/.env"
+        ]
+        for path in envPaths {
+            if let content = try? String(contentsOfFile: path, encoding: .utf8) {
+                for line in content.components(separatedBy: .newlines) {
+                    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.hasPrefix("DEEPL_API_KEY=") {
+                        var val = String(trimmed.dropFirst("DEEPL_API_KEY=".count))
+                        val = val.trimmingCharacters(in: CharacterSet(charactersIn: "\"' \t\n\r"))
+                        if !val.isEmpty {
+                            _ = KeychainHelper.saveAPIKey(val)
+                            return val
+                        }
+                    }
+                }
+            }
         }
         return nil
     }
