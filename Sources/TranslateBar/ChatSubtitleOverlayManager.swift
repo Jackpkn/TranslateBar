@@ -51,7 +51,8 @@ final class SubtitlePillWindowController: NSWindowController {
         label.font = NSFont.systemFont(ofSize: 11, weight: .medium)
         label.textColor = .labelColor
         label.alignment = (alignment == .sender) ? .left : .right
-        label.lineBreakMode = .byTruncatingTail
+        label.lineBreakMode = .byWordWrapping
+        label.maximumNumberOfLines = 0
         label.frame = NSRect(x: 8, y: 4, width: pillWidth - 16, height: 20)
 
         containerView.addSubview(label)

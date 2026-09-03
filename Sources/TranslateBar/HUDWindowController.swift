@@ -36,23 +36,23 @@ final class HUDWindowController: NSWindowController {
         containerView.wantsLayer = true
         containerView.layer?.cornerRadius = 12
         containerView.layer?.masksToBounds = true
+        containerView.autoresizingMask = [.width, .height]
 
         iconLabel = NSTextField(labelWithString: "🌐")
         iconLabel.font = NSFont.systemFont(ofSize: 20)
         iconLabel.alignment = .center
-        iconLabel.frame = NSRect(x: 10, y: 20, width: 28, height: 26)
 
         label = NSTextField(wrappingLabelWithString: "Translating...")
         label.font = NSFont.systemFont(ofSize: 13, weight: .bold)
         label.textColor = .labelColor
         label.lineBreakMode = .byWordWrapping
-        label.frame = NSRect(x: 44, y: 24, width: 320, height: 34)
+        label.maximumNumberOfLines = 0
 
-        subLabel = NSTextField(labelWithString: "")
-        subLabel.font = NSFont.systemFont(ofSize: 11, weight: .regular)
+        subLabel = NSTextField(wrappingLabelWithString: "")
+        subLabel.font = NSFont.systemFont(ofSize: 12, weight: .regular)
         subLabel.textColor = .secondaryLabelColor
-        subLabel.lineBreakMode = .byTruncatingTail
-        subLabel.frame = NSRect(x: 44, y: 6, width: 320, height: 16)
+        subLabel.lineBreakMode = .byWordWrapping
+        subLabel.maximumNumberOfLines = 0
 
         containerView.addSubview(iconLabel)
         containerView.addSubview(label)
@@ -81,8 +81,52 @@ final class HUDWindowController: NSWindowController {
         }
 
         if let window = window {
-            let windowWidth: CGFloat = 380
-            let windowHeight: CGFloat = 64
+            let windowWidth: CGFloat = 420
+            let textWidth: CGFloat = 348
+
+            // Measure dynamic text heights to fit all lines without truncating
+            let titleHeight: CGFloat
+            if !message.isEmpty {
+                let rect = (message as NSString).boundingRect(
+                    with: NSSize(width: textWidth, height: CGFloat.greatestFiniteMagnitude),
+                    options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    attributes: [.font: label.font ?? NSFont.systemFont(ofSize: 13, weight: .bold)]
+                )
+                titleHeight = max(18, ceil(rect.height))
+            } else {
+                titleHeight = 0
+            }
+
+            let subHeight: CGFloat
+            if !subMessage.isEmpty {
+                let rect = (subMessage as NSString).boundingRect(
+                    with: NSSize(width: textWidth, height: CGFloat.greatestFiniteMagnitude),
+                    options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    attributes: [.font: subLabel.font ?? NSFont.systemFont(ofSize: 12, weight: .regular)]
+                )
+                subHeight = max(16, ceil(rect.height))
+            } else {
+                subHeight = 0
+            }
+
+            let spacing: CGFloat = (titleHeight > 0 && subHeight > 0) ? 6 : 0
+            let contentHeight = titleHeight + subHeight + spacing
+            let windowHeight: CGFloat = max(64, min(contentHeight + 24, 450))
+
+            // Layout subviews
+            iconLabel.frame = NSRect(x: 12, y: windowHeight - 38, width: 28, height: 26)
+
+            if subHeight > 0 && titleHeight > 0 {
+                label.frame = NSRect(x: 48, y: windowHeight - 12 - titleHeight, width: textWidth, height: titleHeight)
+                subLabel.frame = NSRect(x: 48, y: windowHeight - 12 - titleHeight - spacing - subHeight, width: textWidth, height: subHeight)
+            } else if subHeight > 0 {
+                label.frame = .zero
+                subLabel.frame = NSRect(x: 48, y: 12, width: textWidth, height: windowHeight - 24)
+            } else {
+                label.frame = NSRect(x: 48, y: 12, width: textWidth, height: windowHeight - 24)
+                subLabel.frame = .zero
+            }
+
             var targetX: CGFloat
             var targetY: CGFloat
 
@@ -94,7 +138,7 @@ final class HUDWindowController: NSWindowController {
                 // Position near mouse cursor
                 let mouseLoc = NSEvent.mouseLocation
                 targetX = mouseLoc.x + 15
-                targetY = mouseLoc.y - 70
+                targetY = mouseLoc.y - windowHeight - 10
             }
 
             if let screen = NSScreen.main {
@@ -108,10 +152,13 @@ final class HUDWindowController: NSWindowController {
                 if targetY < frame.minY {
                     targetY = textFrame != nil ? (textFrame!.origin.y + textFrame!.size.height + 8) : (NSEvent.mouseLocation.y + 15)
                 }
+                if targetY + windowHeight > frame.maxY {
+                    targetY = frame.maxY - windowHeight - 10
+                }
             }
 
-            window.setFrameOrigin(NSPoint(x: targetX, y: targetY))
-            window.orderFrontRegardless() // Ensure visibility above WhatsApp, Telegram, etc.
+            window.setFrame(NSRect(x: targetX, y: targetY, width: windowWidth, height: windowHeight), display: true, animate: false)
+            window.orderFrontRegardless()
         }
 
         if let delay = autoDismissDelay {
