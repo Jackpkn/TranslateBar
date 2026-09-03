@@ -426,7 +426,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                 speakText: translation.translatedText,
                                 targetLang: translation.targetLangUsed,
                                 textFrame: textFrame,
-                                autoDismissDelay: 10.0
+                                autoDismissDelay: nil
                             )
                         case .failure(let error):
                             HUDWindowController.shared.show(message: "Translation Error", subMessage: error.localizedDescription, icon: "⚠️", autoDismissDelay: 3.0)

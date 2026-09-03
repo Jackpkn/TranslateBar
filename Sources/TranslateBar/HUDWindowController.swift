@@ -6,12 +6,15 @@ final class HUDWindowController: NSWindowController {
     private var label: NSTextField!
     private var iconLabel: NSTextField!
     private var subLabel: NSTextField!
+    private var closeButton: NSButton!
+    private var copyButton: NSButton!
     private var containerView: NSVisualEffectView!
     private var dismissTimer: Timer?
+    private var currentTextToCopy: String = ""
 
     convenience init() {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 64),
+            contentRect: NSRect(x: 0, y: 0, width: 440, height: 64),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -54,10 +57,38 @@ final class HUDWindowController: NSWindowController {
         subLabel.lineBreakMode = .byWordWrapping
         subLabel.maximumNumberOfLines = 0
 
+        closeButton = NSButton(title: "✕", target: self, action: #selector(closeClicked))
+        closeButton.bezelStyle = .inline
+        closeButton.isBordered = false
+        closeButton.font = NSFont.systemFont(ofSize: 12, weight: .bold)
+        closeButton.contentTintColor = .secondaryLabelColor
+        closeButton.toolTip = "Close (Dismiss)"
+
+        copyButton = NSButton(title: "Copy", target: self, action: #selector(copyClicked))
+        copyButton.bezelStyle = .inline
+        copyButton.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        copyButton.toolTip = "Copy translation to clipboard"
+
         containerView.addSubview(iconLabel)
         containerView.addSubview(label)
         containerView.addSubview(subLabel)
+        containerView.addSubview(closeButton)
+        containerView.addSubview(copyButton)
         window.contentView = containerView
+    }
+
+    @objc private func closeClicked() {
+        dismiss()
+    }
+
+    @objc private func copyClicked() {
+        guard !currentTextToCopy.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(currentTextToCopy, forType: .string)
+        copyButton.title = "Copied! ✓"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            self?.copyButton.title = "Copy"
+        }
     }
 
     func show(
@@ -67,7 +98,7 @@ final class HUDWindowController: NSWindowController {
         speakText: String? = nil,
         targetLang: String = "EN-US",
         textFrame: CGRect? = nil,
-        autoDismissDelay: TimeInterval? = 10.0
+        autoDismissDelay: TimeInterval? = nil
     ) {
         dismissTimer?.invalidate()
         dismissTimer = nil
@@ -75,14 +106,20 @@ final class HUDWindowController: NSWindowController {
         label.stringValue = message
         subLabel.stringValue = subMessage
         iconLabel.stringValue = icon
+        currentTextToCopy = subMessage.isEmpty ? message : subMessage
+
+        // Show action buttons when displaying real translation content
+        let isRealContent = !subMessage.isEmpty || (message != "Translating..." && !message.contains("Translating"))
+        closeButton.isHidden = !isRealContent
+        copyButton.isHidden = !isRealContent
 
         if let text = speakText, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             AudioSpeechHelper.shared.speak(text: text, languageCode: targetLang)
         }
 
         if let window = window {
-            let windowWidth: CGFloat = 420
-            let textWidth: CGFloat = 348
+            let windowWidth: CGFloat = 440
+            let textWidth: CGFloat = isRealContent ? 320 : 360
 
             // Measure dynamic text heights to fit all lines without truncating
             let titleHeight: CGFloat
@@ -111,10 +148,12 @@ final class HUDWindowController: NSWindowController {
 
             let spacing: CGFloat = (titleHeight > 0 && subHeight > 0) ? 6 : 0
             let contentHeight = titleHeight + subHeight + spacing
-            let windowHeight: CGFloat = max(64, min(contentHeight + 24, 450))
+            let windowHeight: CGFloat = max(64, min(contentHeight + 26, 460))
 
             // Layout subviews
             iconLabel.frame = NSRect(x: 12, y: windowHeight - 38, width: 28, height: 26)
+            closeButton.frame = NSRect(x: windowWidth - 28, y: windowHeight - 28, width: 20, height: 20)
+            copyButton.frame = NSRect(x: windowWidth - 78, y: windowHeight - 30, width: 46, height: 20)
 
             if subHeight > 0 && titleHeight > 0 {
                 label.frame = NSRect(x: 48, y: windowHeight - 12 - titleHeight, width: textWidth, height: titleHeight)

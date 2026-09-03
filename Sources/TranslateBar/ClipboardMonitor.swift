@@ -21,7 +21,7 @@ final class ClipboardMonitor {
             let pasteboard = NSPasteboard.general
             if pasteboard.changeCount != self.lastChangeCount {
                 self.lastChangeCount = pasteboard.changeCount
-                if let copiedText = pasteboard.string(forType: .string), !copiedText.isEmpty, copiedText.count < 300 {
+                if let copiedText = pasteboard.string(forType: .string), !copiedText.isEmpty, copiedText.count < 1500 {
                     let targetLang = targetLanguageProvider()
                     DeepLService.shared.translate(text: copiedText, targetLang: targetLang) { result in
                         DispatchQueue.main.async {
@@ -32,7 +32,7 @@ final class ClipboardMonitor {
                                     icon: "📋",
                                     speakText: nil,
                                     targetLang: targetLang,
-                                    autoDismissDelay: 3.0
+                                    autoDismissDelay: nil // Stays until user closes it with the ✕ button
                                 )
                             }
                         }
