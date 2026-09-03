@@ -31,17 +31,20 @@ final class DeepLService {
 
     private init() {}
 
-    /// Gets the current active API key (Keychain -> Process environment -> .env file)
+    private var inMemoryKey: String?
+
+    /// Gets the current active API key (.env file -> environment -> UserDefaults -> in-memory cache)
     var apiKey: String? {
-        if let storedKey = KeychainHelper.getAPIKey(), !storedKey.isEmpty {
-            return storedKey
+        if let key = inMemoryKey, !key.isEmpty {
+            return key
         }
+        // 1. Process environment (export DEEPL_API_KEY=...)
         if let envKey = ProcessInfo.processInfo.environment["DEEPL_API_KEY"], !envKey.isEmpty {
             let cleanKey = envKey.trimmingCharacters(in: CharacterSet(charactersIn: "\"' \t\n\r"))
-            _ = KeychainHelper.saveAPIKey(cleanKey)
+            inMemoryKey = cleanKey
             return cleanKey
         }
-        // Try reading .env file from current directory
+        // 2. .env file from current directory
         let envPaths = [
             FileManager.default.currentDirectoryPath + "/.env",
             Bundle.main.bundlePath + "/.env"
@@ -54,14 +57,25 @@ final class DeepLService {
                         var val = String(trimmed.dropFirst("DEEPL_API_KEY=".count))
                         val = val.trimmingCharacters(in: CharacterSet(charactersIn: "\"' \t\n\r"))
                         if !val.isEmpty {
-                            _ = KeychainHelper.saveAPIKey(val)
+                            inMemoryKey = val
                             return val
                         }
                     }
                 }
             }
         }
+        // 3. UserDefaults (no macOS Keychain password prompt)
+        if let savedKey = UserDefaults.standard.string(forKey: "savedDeepLAPIKey"), !savedKey.isEmpty {
+            inMemoryKey = savedKey
+            return savedKey
+        }
         return nil
+    }
+
+    func setAPIKey(_ key: String) {
+        let clean = key.trimmingCharacters(in: CharacterSet(charactersIn: "\"' \t\n\r"))
+        inMemoryKey = clean
+        UserDefaults.standard.set(clean, forKey: "savedDeepLAPIKey")
     }
 
     /// Formality preference: "default", "more", "less"

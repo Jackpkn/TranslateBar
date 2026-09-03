@@ -51,6 +51,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Pre-initialize Live Sidebar on main thread
         _ = ChatLiveSidebarWindowController.shared
 
+        // Clean up any legacy Keychain item that triggers macOS access prompts
+        _ = KeychainHelper.deleteAPIKey()
+
         // Setup Global Hotkeys: Option + T (Selection) & Option + Shift + T (Chat Scan)
         GlobalHotkeyManager.shared.startMonitoring(
             onSelectionHotkey: { [weak self] in
@@ -387,9 +390,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if response == .alertFirstButtonReturn {
             let newKey = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             if !newKey.isEmpty {
-                _ = KeychainHelper.saveAPIKey(newKey)
+                DeepLService.shared.setAPIKey(newKey)
                 refreshUsageStats()
-                HUDWindowController.shared.show(message: "API Key saved in Keychain!", subMessage: "Ready to translate", icon: "🔑", autoDismissDelay: 2.0)
+                HUDWindowController.shared.show(message: "API Key saved!", subMessage: "Ready to translate", icon: "🔑", autoDismissDelay: 2.0)
             }
         }
     }
